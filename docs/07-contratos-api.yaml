@@ -1,0 +1,314 @@
+openapi: 3.0.3
+info:
+  title: E-commerce Monólito Modular — API
+  version: 0.1.0
+  description: |
+    Stub inicial dos contratos. Todas as rotas de negócio respondem 501 até os use cases serem implementados.
+    Toda resposta carrega o cabeçalho `x-request-id`.
+servers:
+  - url: http://localhost:3000/v1
+    description: Local
+
+tags:
+  - name: catalogo
+  - name: carrinho
+  - name: checkout
+  - name: pagamento
+  - name: usuarios
+
+paths:
+  /catalogo/produtos:
+    get:
+      tags: [catalogo]
+      summary: Lista produtos do catálogo
+      operationId: listProducts
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string }
+          description: Busca por nome ou SKU
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: pageSize
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: Lista paginada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Product' }
+                  page: { type: integer }
+                  pageSize: { type: integer }
+                  total: { type: integer }
+        '501': { $ref: '#/components/responses/NotImplemented' }
+
+  /carrinho/items:
+    post:
+      tags: [carrinho]
+      summary: Adiciona item ao carrinho do usuário logado
+      operationId: addCartItem
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddCartItemRequest' }
+      responses:
+        '201':
+          description: Carrinho atualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cart' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '501': { $ref: '#/components/responses/NotImplemented' }
+
+  /carrinho/items/{itemId}:
+    delete:
+      tags: [carrinho]
+      summary: Remove item do carrinho
+      operationId: removeCartItem
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: itemId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Item removido }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '501': { $ref: '#/components/responses/NotImplemented' }
+
+  /checkout:
+    post:
+      tags: [checkout]
+      summary: Gera um pedido a partir do carrinho do usuário
+      description: Valida estoque, congela preços, cria Order + OrderItems com status PENDING e esvazia o carrinho (transação única).
+      operationId: checkout
+      security: [{ bearerAuth: [] }]
+      responses:
+        '201':
+          description: Pedido criado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409':
+          description: Carrinho vazio ou estoque insuficiente
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '501': { $ref: '#/components/responses/NotImplemented' }
+
+  /pagamentos:
+    post:
+      tags: [pagamento]
+      summary: Paga um pedido (provedor simulado)
+      operationId: createPayment
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreatePaymentRequest' }
+      responses:
+        '201':
+          description: Pagamento processado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Payment' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Pedido já pago ou cancelado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '501': { $ref: '#/components/responses/NotImplemented' }
+
+  /usuarios/signup:
+    post:
+      tags: [usuarios]
+      summary: Cadastra um novo usuário
+      operationId: signup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Credentials' }
+      responses:
+        '201':
+          description: Usuário criado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409':
+          description: E-mail já cadastrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '501': { $ref: '#/components/responses/NotImplemented' }
+
+  /usuarios/login:
+    post:
+      tags: [usuarios]
+      summary: Autentica e retorna token JWT
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Credentials' }
+      responses:
+        '200':
+          description: Autenticado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken: { type: string }
+                  tokenType: { type: string, example: Bearer }
+                  expiresIn: { type: integer, example: 3600 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '501': { $ref: '#/components/responses/NotImplemented' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Product:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, example: Teclado mecânico }
+        sku: { type: string, example: TEC-001 }
+        price: { type: string, example: '249.90', description: Decimal serializado como string }
+        stock: { type: integer, example: 15 }
+
+    AddCartItemRequest:
+      type: object
+      required: [productId, qty]
+      properties:
+        productId: { type: string, format: uuid }
+        qty: { type: integer, minimum: 1, example: 2 }
+
+    CartItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        productId: { type: string, format: uuid }
+        qty: { type: integer }
+        unitPrice: { type: string, example: '249.90' }
+
+    Cart:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/CartItem' }
+        subtotal: { type: string, example: '499.80' }
+
+    OrderItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        productId: { type: string, format: uuid }
+        qty: { type: integer }
+        unitPrice: { type: string }
+
+    Order:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        total: { type: string, example: '499.80' }
+        status: { type: string, enum: [PENDING, PAID, CANCELLED] }
+        createdAt: { type: string, format: date-time }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/OrderItem' }
+
+    CreatePaymentRequest:
+      type: object
+      required: [orderId, method]
+      properties:
+        orderId: { type: string, format: uuid }
+        method: { type: string, enum: [pix, credit_card], example: pix }
+        simulate:
+          type: string
+          enum: [approve, decline]
+          default: approve
+          description: Só para o provedor fake — força o resultado.
+
+    Payment:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        orderId: { type: string, format: uuid }
+        provider: { type: string, example: fake }
+        status: { type: string, enum: [PENDING, APPROVED, DECLINED] }
+        payload: { type: object, additionalProperties: true }
+
+    Credentials:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email, example: cliente@loja.dev }
+        password: { type: string, format: password, minLength: 8 }
+
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        role: { type: string, enum: [customer, admin] }
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string, example: NOT_IMPLEMENTED }
+            message: { type: string }
+            requestId: { type: string }
+
+  responses:
+    BadRequest:
+      description: Entrada inválida
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: Token ausente ou inválido
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Recurso não encontrado
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotImplemented:
+      description: Use case ainda não implementado (esqueleto)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
